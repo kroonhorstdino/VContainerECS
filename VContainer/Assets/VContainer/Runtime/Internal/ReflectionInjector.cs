@@ -1,24 +1,38 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Unity.Entities;
 
 namespace VContainer.Internal
 {
-    sealed class ReflectionInjector : IInjector
+    internal sealed class SystemReflectionInjector : ReflectionInjector
+    {
+        private SystemReflectionInjector(InjectTypeInfo injectTypeInfo) : base(injectTypeInfo) { }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static SystemReflectionInjector Build(Type type)
+        {
+            var injectTypeInfo = TypeAnalyzer.AnalyzeWithCache(type);
+            return new(injectTypeInfo);
+        }
+
+        /// <inheritdoc />
+        protected override object CreateConstructedInstance(object[] parameterValues) =>
+            TypeManager.ConstructSystem(injectTypeInfo.InjectConstructor.ConstructorInfo.DeclaringType);
+    }
+
+    internal class ReflectionInjector : IInjector
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ReflectionInjector Build(Type type)
         {
             var injectTypeInfo = TypeAnalyzer.AnalyzeWithCache(type);
-            return new ReflectionInjector(injectTypeInfo);
+            return new(injectTypeInfo);
         }
 
-        readonly InjectTypeInfo injectTypeInfo;
+        protected readonly InjectTypeInfo injectTypeInfo;
 
-        ReflectionInjector(InjectTypeInfo injectTypeInfo)
-        {
-            this.injectTypeInfo = injectTypeInfo;
-        }
+        protected ReflectionInjector(InjectTypeInfo injectTypeInfo) => this.injectTypeInfo = injectTypeInfo;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Inject(object instance, IObjectResolver resolver, IReadOnlyList<IInjectParameter> parameters)
@@ -30,7 +44,7 @@ namespace VContainer.Internal
 
         public object CreateInstance(IObjectResolver resolver, IReadOnlyList<IInjectParameter> parameters)
         {
-            var parameterInfos = injectTypeInfo.InjectConstructor.ParameterInfos;
+            var parameterInfos  = injectTypeInfo.InjectConstructor.ParameterInfos;
             var parameterValues = CappedArrayPool<object>.Shared8Limit.Rent(parameterInfos.Length);
             try
             {
@@ -42,13 +56,16 @@ namespace VContainer.Internal
                         parameterInfo.Name,
                         parameters);
                 }
-                var instance = injectTypeInfo.InjectConstructor.ConstructorInfo.Invoke(parameterValues);
+
+                var instance = CreateConstructedInstance(parameterValues);
                 Inject(instance, resolver, parameters);
                 return instance;
             }
             catch (VContainerException ex)
             {
-                throw new VContainerException(ex.InvalidType, $"Failed to resolve {injectTypeInfo.Type} : {ex.Message}");
+                throw new VContainerException(
+                    ex.InvalidType,
+                    $"Failed to resolve {injectTypeInfo.Type} : {ex.Message}");
             }
             finally
             {
@@ -56,7 +73,10 @@ namespace VContainer.Internal
             }
         }
 
-        void InjectFields(object obj, IObjectResolver resolver)
+        protected virtual object CreateConstructedInstance(object[] parameterValues) =>
+            injectTypeInfo.InjectConstructor.ConstructorInfo.Invoke(parameterValues);
+
+        private void InjectFields(object obj, IObjectResolver resolver)
         {
             if (injectTypeInfo.InjectFields == null)
                 return;
@@ -68,7 +88,7 @@ namespace VContainer.Internal
             }
         }
 
-        void InjectProperties(object obj, IObjectResolver resolver)
+        private void InjectProperties(object obj, IObjectResolver resolver)
         {
             if (injectTypeInfo.InjectProperties == null)
                 return;
@@ -80,14 +100,14 @@ namespace VContainer.Internal
             }
         }
 
-        void InjectMethods(object obj, IObjectResolver resolver, IReadOnlyList<IInjectParameter> parameters)
+        private void InjectMethods(object obj, IObjectResolver resolver, IReadOnlyList<IInjectParameter> parameters)
         {
             if (injectTypeInfo.InjectMethods == null)
                 return;
 
             foreach (var method in injectTypeInfo.InjectMethods)
             {
-                var parameterInfos = method.ParameterInfos;
+                var parameterInfos  = method.ParameterInfos;
                 var parameterValues = CappedArrayPool<object>.Shared8Limit.Rent(parameterInfos.Length);
                 try
                 {
@@ -99,11 +119,14 @@ namespace VContainer.Internal
                             parameterInfo.Name,
                             parameters);
                     }
+
                     method.MethodInfo.Invoke(obj, parameterValues);
                 }
                 catch (VContainerException ex)
                 {
-                    throw new VContainerException(ex.InvalidType, $"Failed to resolve {injectTypeInfo.Type} : {ex.Message}");
+                    throw new VContainerException(
+                        ex.InvalidType,
+                        $"Failed to resolve {injectTypeInfo.Type} : {ex.Message}");
                 }
                 finally
                 {

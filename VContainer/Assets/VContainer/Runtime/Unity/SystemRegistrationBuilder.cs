@@ -1,6 +1,5 @@
 #if VCONTAINER_ECS_INTEGRATION
 using System;
-using System.Collections.Generic;
 using Unity.Entities;
 using VContainer.Internal;
 
@@ -8,14 +7,15 @@ namespace VContainer.Unity
 {
     public sealed class SystemRegistrationBuilder : RegistrationBuilder
     {
-        readonly string worldName;
-        Type systemGroupType;
+        private readonly string worldName;
+        private          Type   systemGroupType;
 
-        internal SystemRegistrationBuilder(Type implementationType, string worldName)
-            : base(implementationType, default)
+        internal SystemRegistrationBuilder(Type implementationType, string worldName) : base(
+            implementationType,
+            default)
         {
             this.worldName = worldName;
-            InterfaceTypes = new List<Type>
+            InterfaceTypes = new()
             {
                 typeof(ComponentSystemBase),
                 implementationType
@@ -31,7 +31,7 @@ namespace VContainer.Unity
                 systemGroupType,
                 injector,
                 Parameters);
-            return new Registration(ImplementationType, Lifetime, InterfaceTypes, provider);
+            return new(ImplementationType, Lifetime, InterfaceTypes, provider);
         }
 
         public SystemRegistrationBuilder IntoGroup<T>() where T : ComponentSystemGroup

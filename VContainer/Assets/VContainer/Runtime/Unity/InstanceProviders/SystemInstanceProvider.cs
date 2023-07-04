@@ -7,26 +7,26 @@ namespace VContainer.Unity
 {
     public sealed class SystemInstanceProvider : IInstanceProvider
     {
-        readonly Type systemType;
-        readonly IInjector injector;
-        readonly IReadOnlyList<IInjectParameter> customParameters;
-        readonly string worldName;
-        readonly Type systemGroupType;
+        private readonly Type                            systemType;
+        private readonly IInjector                       injector;
+        private readonly IReadOnlyList<IInjectParameter> customParameters;
+        private readonly string                          worldName;
+        private readonly Type                            systemGroupType;
 
-        World world;
-        ComponentSystemBase instance;
+        private World               world;
+        private ComponentSystemBase instance;
 
         public SystemInstanceProvider(
-            Type systemType,
-            string worldName,
-            Type systemGroupType,
-            IInjector injector,
+            Type                            systemType,
+            string                          worldName,
+            Type                            systemGroupType,
+            IInjector                       injector,
             IReadOnlyList<IInjectParameter> customParameters)
         {
-            this.systemType = systemType;
-            this.worldName = worldName;
-            this.systemGroupType = systemGroupType;
-            this.injector = injector;
+            this.systemType       = systemType;
+            this.worldName        = worldName;
+            this.systemGroupType  = systemGroupType;
+            this.injector         = injector;
             this.customParameters = customParameters;
         }
 
@@ -35,35 +35,39 @@ namespace VContainer.Unity
             if (world is null)
                 world = GetWorld(resolver);
 
+            TypeManager.Initialize();
+
             if (instance is null)
             {
-                instance = (ComponentSystemBase)injector.CreateInstance(resolver, customParameters);
-#if VCONTAINER_ECS_INTEGRATION_1_0
-                world.AddSystemManaged(instance);
-#else
+            #if VCONTAINER_ECS_INTEGRATION_1_0
+
+                instance = world.CreateSystemManaged(systemType);
+                resolver.Inject(instance);
+            #else
+                instance = (ComponentSystemBase) injector.CreateInstance(resolver, customParameters);
                 world.AddSystem(instance);
-#endif
+            #endif
 
                 if (systemGroupType != null)
                 {
-#if VCONTAINER_ECS_INTEGRATION_1_0
-                    var systemGroup = (ComponentSystemGroup)world.GetOrCreateSystemManaged(systemGroupType);
-#else
+                #if VCONTAINER_ECS_INTEGRATION_1_0
+                    var systemGroup = (ComponentSystemGroup) world.GetOrCreateSystemManaged(systemGroupType);
+                #else
                     var systemGroup = (ComponentSystemGroup)world.GetOrCreateSystem(systemGroupType);
-#endif
+                #endif
                     systemGroup.AddSystemToUpdateList(instance);
                 }
 
                 return instance;
             }
-#if VCONTAINER_ECS_INTEGRATION_1_0
+        #if VCONTAINER_ECS_INTEGRATION_1_0
             return world.GetExistingSystemManaged(systemType);
-#else
+        #else
             return world.GetExistingSystem(systemType);
-#endif
+        #endif
         }
 
-        World GetWorld(IObjectResolver resolver)
+        private World GetWorld(IObjectResolver resolver)
         {
             if (worldName is null && World.DefaultGameObjectInjectionWorld != null)
                 return World.DefaultGameObjectInjectionWorld;
@@ -74,6 +78,7 @@ namespace VContainer.Unity
                 if (world.Name == worldName)
                     return world;
             }
+
             throw new VContainerException(systemType, $"World `{worldName}` is not registered");
         }
     }
